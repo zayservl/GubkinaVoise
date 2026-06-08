@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Transcriber</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: #00d9ff;
+        }
+        .upload-area {
+            border: 2px dashed #444;
+            border-radius: 12px;
+            padding: 3rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 2rem;
+        }
+        .upload-area:hover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.05);
+        }
+        .upload-area.dragover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.1);
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .upload-text {
+            color: #888;
+        }
+        .btn {
+            background: #00d9ff;
+            color: #1a1a2e;
+            border: none;
+            padding: 0.75rem 2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            background: #00b8d9;
+        }
+        .btn:disabled {
+            background: #444;
+            cursor: not-allowed;
+        }
+        .status {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            display: none;
+        }
+        .status.visible {
+            display: block;
+        }
+        .status-title {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+        .progress-bar {
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d9ff, #00ff88);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .progress-text {
+            margin-top: 0.5rem;
+            color: #888;
+            font-size: 0.9rem;
+        }
+        .result {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: none;
+        }
+        .result.visible {
+            display: block;
+        }
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .result-title {
+            font-size: 1.1rem;
+        }
+        .download-btns {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .download-btn {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+        }
+        .download-btn:hover {
+            background: #444;
+        }
+        .text-output {
+            background: #0f0f23;
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        .error {
+            background: #3d0000;
+            color: #ff6b6b;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+            display: none;
+        }
+        .error.visible {
+            display: block;
+        }
+        .format-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .format-tab {
+            background: #333;
+            border: none;
+            color: #888;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+        .format-tab.active {
+            background: #00d9ff;
+            color: #1a1a2e;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎙️ Whisper Транскрибация</h1>
+
+        <div class="upload-area" id="uploadArea">
+            <div class="upload-icon">📁</div>
+            <div class="upload-text">Перетащите файл сюда или кликните для выбора</div>
+            <div class="upload-text" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                Поддерживает: MOV, MPEG, MP3, WAV
+            </div>
+            <input type="file" id="fileInput" accept=".mov,.mpeg,.mp3,.wav,video/quicktime,video/mpeg,audio/mpeg,audio/wav">
+        </div>
+
+        <div style="text-align: center;">
+            <button class="btn" id="transcribeBtn" disabled>Транскрибировать</button>
+        </div>
+
+        <div class="status" id="statusBox">
+            <div class="status-title" id="statusTitle">Подготовка...</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">0%</div>
+            <div class="error" id="errorBox"></div>
+        </div>
+
+        <div class="result" id="resultBox">
+            <div class="result-header">
+                <div class="result-title">📝 Результат транскрипции</div>
+                <div class="download-btns">
+                    <button class="download-btn" id="downloadMd">📄 Скачать MD</button>
+                    <button class="download-btn" id="downloadTxt">📃 Скачать TXT</button>
+                </div>
+            </div>
+            <div class="format-tabs">
+                <button class="format-tab active" data-format="md">Markdown</button>
+                <button class="format-tab" data-format="plain">Plain Text</button>
+            </div>
+            <div class="text-output" id="textOutput"></div>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const transcribeBtn = document.getElementById('transcribeBtn');
+        const statusBox = document.getElementById('statusBox');
+        const statusTitle = document.getElementById('statusTitle');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const errorBox = document.getElementById('errorBox');
+        const resultBox = document.getElementById('resultBox');
+        const textOutput = document.getElementById('textOutput');
+        const downloadMd = document.getElementById('downloadMd');
+        const downloadTxt = document.getElementById('downloadTxt');
+
+        let currentFile = null;
+        let currentTaskId = null;
+        let currentResult = null;
+        let pollInterval = null;
+
+        // Drag & Drop
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            if (e.dataTransfer.files.length > 0) {
+                handleFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        function handleFile(file) {
+            currentFile = file;
+            transcribeBtn.disabled = false;
+            statusBox.classList.remove('visible');
+            resultBox.classList.remove('visible');
+            errorBox.classList.remove('visible');
+        }
+
+        transcribeBtn.addEventListener('click', async () => {
+            if (!currentFile) return;
+
+            transcribeBtn.disabled = true;
+            statusBox.classList.add('visible');
+            resultBox.classList.remove('visible');
+            errorBox.classList.remove('visible');
+            statusTitle.textContent = 'Загрузка файла...';
+            progressFill.style.width = '5%';
+            progressText.textContent = 'Загрузка...';
+
+            const formData = new FormData();
+            formData.append('file', currentFile);
+
+            try {
+                const response = await fetch('/api/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Ошибка загрузки');
+                }
+
+                const data = await response.json();
+                currentTaskId = data.task_id;
+                pollStatus();
+
+            } catch (err) {
+                showError(err.message);
+                transcribeBtn.disabled = false;
+            }
+        });
+
+        function pollStatus() {
+            pollInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`/api/status/${currentTaskId}`);
+                    const data = await response.json();
+
+                    updateProgress(data);
+
+                    if (data.status === 'done') {
+                        clearInterval(pollInterval);
+                        showResult(data.result);
+                        transcribeBtn.disabled = false;
+                    } else if (data.status === 'error') {
+                        clearInterval(pollInterval);
+                        showError(data.error || 'Неизвестная ошибка');
+                        transcribeBtn.disabled = false;
+                    }
+                } catch (err) {
+                    clearInterval(pollInterval);
+                    showError('Ошибка проверки статуса');
+                    transcribeBtn.disabled = false;
+                }
+            }, 1000);
+        }
+
+        function updateProgress(data) {
+            const statusMap = {
+                'uploading': 'Загрузка файла...',
+                'transcribing': 'Транскрибация...',
+                'done': 'Готово!',
+                'error': 'Ошибка'
+            };
+
+            statusTitle.textContent = statusMap[data.status] || data.status;
+            progressFill.style.width = data.progress + '%';
+            progressText.textContent = data.progress + '%';
+        }
+
+        function showResult(result) {
+            currentResult = result;
+            resultBox.classList.add('visible');
+            textOutput.textContent = result.md;
+            textOutput.dataset.format = 'md';
+        }
+
+        function showError(message) {
+            errorBox.textContent = 'Ошибка: ' + message;
+            errorBox.classList.add('visible');
+        }
+
+        // Format tabs
+        document.querySelectorAll('.format-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.format-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                const format = tab.dataset.format;
+                if (currentResult) {
+                    textOutput.textContent = currentResult[format];
+                    textOutput.dataset.format = format;
+                }
+            });
+        });
+
+        // Download buttons
+        downloadMd.addEventListener('click', () => {
+            if (currentResult) {
+                downloadFile('transcription.md', currentResult.md);
+            }
+        });
+
+        downloadTxt.addEventListener('click', () => {
+            if (currentResult) {
+                downloadFile('transcription.txt', currentResult.plain);
+            }
+        });
+
+        function downloadFile(filename, content) {
+            const blob = new Blob([content], { encoding: 'utf-8', type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
