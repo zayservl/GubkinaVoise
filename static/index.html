@@ -183,12 +183,13 @@
         <h1>🎙️ Whisper Транскрибация</h1>
 
         <div class="upload-area" id="uploadArea">
-            <div class="upload-icon">📁</div>
-            <div class="upload-text">Перетащите файл сюда или кликните для выбора</div>
+            <div class="upload-icon" id="uploadIcon">📁</div>
+            <div class="upload-text" id="uploadText">Перетащите файл сюда или кликните для выбора</div>
+            <div id="fileName" style="color: #00d9ff; margin-top: 0.5rem; font-weight: 600; display: none;"></div>
             <div class="upload-text" style="margin-top: 0.5rem; font-size: 0.8rem;">
-                Поддерживает: MOV, MPEG, MP3, WAV
+                Поддерживает: MOV, MPEG, MP3, WAV, MP4
             </div>
-            <input type="file" id="fileInput" accept=".mov,.mpeg,.mp3,.wav,video/quicktime,video/mpeg,audio/mpeg,audio/wav">
+            <input type="file" id="fileInput" accept="audio/*,video/*">
         </div>
 
         <div style="text-align: center;">
@@ -211,6 +212,10 @@
                     <button class="download-btn" id="downloadMd">📄 Скачать MD</button>
                     <button class="download-btn" id="downloadTxt">📃 Скачать TXT</button>
                 </div>
+            </div>
+            <div class="version-tabs" style="margin-bottom: 1rem;">
+                <button class="format-tab active" data-version="corrected" id="tabCorrected">✨ Исправленный</button>
+                <button class="format-tab" data-version="raw" id="tabRaw">📝 Сырой</button>
             </div>
             <div class="format-tabs">
                 <button class="format-tab active" data-format="md">Markdown</button>
@@ -268,6 +273,16 @@
         function handleFile(file) {
             currentFile = file;
             transcribeBtn.disabled = false;
+
+            // Показываем название файла
+            const fileNameEl = document.getElementById('fileName');
+            const uploadIcon = document.getElementById('uploadIcon');
+            const uploadText = document.getElementById('uploadText');
+            fileNameEl.textContent = '✓ ' + file.name;
+            fileNameEl.style.display = 'block';
+            uploadIcon.textContent = '📄';
+            uploadText.textContent = 'Файл выбран, нажмите "Транскрибировать"';
+
             statusBox.classList.remove('visible');
             resultBox.classList.remove('visible');
             errorBox.classList.remove('visible');
@@ -336,7 +351,8 @@
         function updateProgress(data) {
             const statusMap = {
                 'uploading': 'Загрузка файла...',
-                'transcribing': 'Транскрибация...',
+                'transcribing': 'Транскрибация Whisper...',
+                'correcting': 'Корректировка через LLM...',
                 'done': 'Готово!',
                 'error': 'Ошибка'
             };
@@ -346,11 +362,37 @@
             progressText.textContent = data.progress + '%';
         }
 
+        let currentVersion = 'corrected';
+        let currentFormat = 'md';
+
         function showResult(result) {
             currentResult = result;
             resultBox.classList.add('visible');
-            textOutput.textContent = result.md;
-            textOutput.dataset.format = 'md';
+
+            // Если нет исправленной версии, скрываем вкладку
+            if (!result.corrected) {
+                document.getElementById('tabCorrected').style.display = 'none';
+                currentVersion = 'raw';
+                document.getElementById('tabRaw').classList.add('active');
+                document.getElementById('tabCorrected').classList.remove('active');
+            } else {
+                document.getElementById('tabCorrected').style.display = '';
+            }
+
+            updateTextOutput();
+        }
+
+        function updateTextOutput() {
+            if (!currentResult) return;
+
+            let content;
+            if (currentVersion === 'corrected') {
+                content = currentFormat === 'md' ? currentResult.corrected_md : currentResult.corrected_plain;
+            } else {
+                content = currentFormat === 'md' ? currentResult.raw_md : currentResult.raw_plain;
+            }
+            textOutput.textContent = content;
+            textOutput.dataset.format = currentFormat;
         }
 
         function showError(message) {
@@ -358,29 +400,38 @@
             errorBox.classList.add('visible');
         }
 
-        // Format tabs
-        document.querySelectorAll('.format-tab').forEach(tab => {
+        // Version tabs
+        document.querySelectorAll('.version-tabs .format-tab').forEach(tab => {
             tab.addEventListener('click', () => {
-                document.querySelectorAll('.format-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.version-tabs .format-tab').forEach(t => t.classList.remove('active'));
                 tab.classList.add('active');
-                const format = tab.dataset.format;
-                if (currentResult) {
-                    textOutput.textContent = currentResult[format];
-                    textOutput.dataset.format = format;
-                }
+                currentVersion = tab.dataset.version;
+                updateTextOutput();
+            });
+        });
+
+        // Format tabs
+        document.querySelectorAll('.format-tabs .format-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.format-tabs .format-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFormat = tab.dataset.format;
+                updateTextOutput();
             });
         });
 
         // Download buttons
         downloadMd.addEventListener('click', () => {
             if (currentResult) {
-                downloadFile('transcription.md', currentResult.md);
+                const content = currentVersion === 'corrected' ? currentResult.corrected_md : currentResult.raw_md;
+                downloadFile('transcription.md', content);
             }
         });
 
         downloadTxt.addEventListener('click', () => {
             if (currentResult) {
-                downloadFile('transcription.txt', currentResult.plain);
+                const content = currentVersion === 'corrected' ? currentResult.corrected_plain : currentResult.raw_plain;
+                downloadFile('transcription.txt', content);
             }
         });
 
